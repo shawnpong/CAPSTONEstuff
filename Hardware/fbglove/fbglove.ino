@@ -23,9 +23,18 @@ float gyroOffset[NUM_IMU][3]  = {0};
 // WiFi
 const char* ssid = "iPhone";
 const char* password = "zhuqshenw";
-WiFiClient client;
+
+// === IMU DATA SENDING CLIENT (to laptop) ===
+// RENAMED 'client' to 'dataClient' for clarity
+WiFiClient dataClient;
 const char* laptop_ip = "172.20.10.6"; 
-const int laptop_port = 4210;
+const int data_port = 4210; // Port for sending IMU data
+
+// === COMMAND RECEIVING SERVER (from laptop) ===
+// NEW: Listening on port 5001 to avoid conflict with fbcar (5000)
+WiFiServer commandServer(5001);
+WiFiClient commandClient;
+bool commandClientConnected = false;
 
 // AES
 AES aes;
@@ -35,13 +44,12 @@ byte aes_iv[16]  = {0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
                     0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F};
 
 // === Motor buzz parameters ===
-// Define distinct durations for haptic feedback
-#define BUZZ_DEFAULT 500  // Standard buzz duration (used for legacy BUZZ command)
-#define BUZZ_SHORT 120    // Standard short acknowledgement buzz for commands 1-5
+#define BUZZ_DEFAULT 500  // Standard buzz duration 
+#define BUZZ_SHORT 120    // Standard short acknowledgement buzz for commands 1-6
 
 bool motorBuzzing = false;
 unsigned long motorStartTime = 0;
-unsigned int currentBuzzDuration = BUZZ_DEFAULT; // Stores the duration of the current buzz
+unsigned int currentBuzzDuration = BUZZ_DEFAULT; 
 
 // Last periodic buzz time (logic removed, but variable kept if needed later)
 unsigned long lastBuzzTime = 0;
@@ -104,7 +112,7 @@ void startMotorBuzz(unsigned int duration) {
     digitalWrite(MOTOR_PIN, HIGH);
     motorStartTime = millis();
     motorBuzzing = true;
-    // Serial.println("Motor ON for " + String(duration) + "ms");
+    Serial.println("✅ Motor ON for " + String(duration) + "ms");
   }
 }
 
@@ -159,8 +167,15 @@ void setup() {
   while(WiFi.status()!=WL_CONNECTED){ delay(500); Serial.print("."); }
   Serial.println("\n✅ WiFi connected. IP: " + WiFi.localIP().toString());
 
-  if (!client.connect(laptop_ip, laptop_port)) Serial.println("❌ TCP connect failed");
-  else Serial.println("✅ Connected to laptop at " + String(laptop_ip) + ":" + String(laptop_port));
+  // === 1. IMU Data Client Connection ===
+  // Use dataClient to send IMU data to the laptop (4210)
+  if (!dataClient.connect(laptop_ip, data_port)) Serial.println("❌ IMU Data Client connect failed");
+  else Serial.println("✅ IMU Data Client connected to laptop at " + String(laptop_ip) + ":" + String(data_port));
+
+  // === 2. Command Server Initialization ===
+  // Start the server to receive buzz commands from the laptop (5001)
+  commandServer.begin();
+  Serial.println("📡 Command Server started on port 5001");
 
   // Initialize IMUs
   for (int i=0;i<NUM_IMU;i++){
@@ -171,39 +186,62 @@ void setup() {
 }
 
 void loop() {
-  // 1. --- Check for incoming commands from laptop ---
-  if (client.connected() && client.available()) {
-    // Read the incoming command line
-    String command = client.readStringUntil('\n');
-    command.trim(); // Remove any leading/trailing whitespace
-
-    // --- Unified short buzz for commands 1-5, no buzz for 0 ---
-    if (command.equalsIgnoreCase("come_here") || command.equalsIgnoreCase("forward") || command.equalsIgnoreCase("come") || command == "1" ||
-        command.equalsIgnoreCase("go_away") || command.equalsIgnoreCase("backward") || command.equalsIgnoreCase("go") || command == "2" ||
-        command.equalsIgnoreCase("turn_around") || command.equalsIgnoreCase("turn") || command == "3" ||
-        command.equalsIgnoreCase("pet") || command == "4" ||
-        command.equalsIgnoreCase("feed") || command == "5" ||
-        command.equalsIgnoreCase("throw_ball") || command.equalsIgnoreCase("throw") || command == "6")
-    {
-      Serial.println("📢 Received movement/action command (1-6). Buzzing SHORT!");
-      startMotorBuzz(BUZZ_SHORT);
-    } 
-    else if (command.equalsIgnoreCase("stop") || command == "0") {
-      Serial.println("📢 Received STOP command (0). No buzz.");
-      // Command 0 (stop) is processed but explicitly does not trigger a motor buzz.
-    }
-    else if (command.equalsIgnoreCase("BUZZ")) {
-      // Legacy BUZZ command for direct control
-      Serial.println("📢 Received BUZZ (legacy) command!");
-      startMotorBuzz(BUZZ_DEFAULT); 
-    } 
-    else if (command.length() > 0) {
-      Serial.println("❌ Unknown command: '" + command + "'");
-      Serial.println("💡 Available commands: 0-5 or keywords (e.g., forward, stop, BUZZ)");
+  // === 1. COMMAND RECEIVING SERVER MANAGEMENT ===
+  
+  // Handle new client connections (Laptop connecting to Glove's server)
+  if (!commandClientConnected) {
+    commandClient = commandServer.available();
+    if (commandClient) {
+      commandClientConnected = true;
+      Serial.println("✅ Command Client connected (Laptop -> Glove)");
     }
   }
 
-  // 2. --- Sensor Data Packaging and Sending ---
+  // Check for and process incoming commands
+  if (commandClientConnected && commandClient.connected()) {
+    if (commandClient.available()) {
+      // Read the incoming UNENCRYPTED command line
+      String command = commandClient.readStringUntil('\n');
+      command.trim(); // Remove any leading/trailing whitespace
+
+      // --- Unified short buzz for commands 1-6, no buzz for 0 ---
+      if (command.equalsIgnoreCase("come_here") || command.equalsIgnoreCase("forward") || command.equalsIgnoreCase("come") || command == "1" ||
+          command.equalsIgnoreCase("go_away") || command.equalsIgnoreCase("backward") || command.equalsIgnoreCase("go") || command == "2" ||
+          command.equalsIgnoreCase("turn_around") || command.equalsIgnoreCase("turn") || command == "3" ||
+          command.equalsIgnoreCase("pet") || command == "4" ||
+          command.equalsIgnoreCase("feed") || command == "5" ||
+          command.equalsIgnoreCase("throw_ball") || command.equalsIgnoreCase("throw") || command == "6")
+      {
+        Serial.println("📢 Received movement/action command (1-6). Buzzing SHORT!");
+        startMotorBuzz(BUZZ_SHORT);
+      } 
+      else if (command.equalsIgnoreCase("stop") || command == "0") {
+        Serial.println("📢 Received STOP command (0). No buzz.");
+      }
+      else if (command.equalsIgnoreCase("BUZZ")) {
+        // Legacy BUZZ command for direct control
+        Serial.println("📢 Received BUZZ (legacy) command!");
+        startMotorBuzz(BUZZ_DEFAULT); 
+      } 
+      else if (command.length() > 0) {
+        Serial.println("❌ Unknown command: '" + command + "'");
+        Serial.println("💡 Available commands: 0-6 or keywords (e.g., forward, stop, BUZZ)");
+      }
+      
+      // Optionally send an ACK back to the laptop on the command client
+      commandClient.println("ACK:Command received");
+    }
+  }
+  
+  // Handle command client disconnection
+  if (commandClientConnected && !commandClient.connected()) {
+    commandClient.stop();
+    commandClientConnected = false;
+    Serial.println("⚠️ Command Client disconnected");
+  }
+
+
+  // === 2. IMU DATA SENDING CLIENT MANAGEMENT ===
   String packet = "";
 
   for (int set = 0; set < N_SETS_PER_PACKET; set++) {
@@ -231,18 +269,18 @@ void loop() {
   packet += "Fuel:" + String(voltage, 3) + "V," + String(percent, 0) + "%;";
 
   String encrypted = encryptData(packet);
-  if (client.connected()) {
-    client.write(encrypted.c_str(), encrypted.length());
-    client.write("\n");
+  if (dataClient.connected()) { // Use dataClient for sending
+    dataClient.write(encrypted.c_str(), encrypted.length());
+    dataClient.write("\n");
     // Serial.println("📤 Sent " + String(N_SETS_PER_PACKET) + " sets of data + Battery");
   } else {
     // Attempt reconnection if disconnected
-    if (client.connect(laptop_ip, laptop_port))
-      Serial.println("✅ Reconnected");
+    if (dataClient.connect(laptop_ip, data_port)) // Use dataClient for reconnecting
+      Serial.println("✅ Reconnected to IMU Data Server");
   }
 
-  // 3. --- Motor Management ---
-  // CRITICAL: Checks if the motor's current buzz duration has finished and turns it off.
+  // === 3. Motor Management (CRITICAL) ===
+  // Checks if the motor's current buzz duration has finished and turns it off.
   updateMotorBuzz(); 
 
   delay(10);
