@@ -1,14 +1,15 @@
 #include <Wire.h>
 #include <WiFi.h>
 #include <AES.h>
+#include <base64.h>
 #include "MPU6050.h"
 
 #define NUM_IMU 5
 #define TCA_ADDR 0x70
 #define FUEL_ADDR 0x36
-#define MOTOR_PIN 2   // vibration motor pin
+#define MOTOR_PIN 2
 #define AES_BLOCK_SIZE 16
-#define N_SETS_PER_PACKET 4   
+#define N_SETS_PER_PACKET 4
 
 MPU6050 imu[NUM_IMU];
 
@@ -26,30 +27,30 @@ const char* password = "zhuqshenw";
 // === IMU DATA SENDING CLIENT (to laptop) ===
 WiFiClient dataClient;
 const char* laptop_ip = "172.20.10.6"; 
-const int data_port = 4210; // Port for sending IMU data
+const int data_port = 4210;
 
 // === COMMAND RECEIVING SERVER (from laptop) ===
 WiFiServer commandServer(5001);
 WiFiClient commandClient;
 bool commandClientConnected = false;
 
-// AES (for IMU data encryption only)
+// AES for IMU data encryption (must match Python code)
 AES aes;
 byte aes_key[16] = {0x2B,0x7E,0x15,0x16,0x28,0xAE,0xD2,0xA6,
                     0xAB,0xF7,0x15,0x88,0x09,0xCF,0x4F,0x3C};
 byte aes_iv[16]  = {0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
                     0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F};
 
-// XOR Key for movement commands (must match Python code)
+// XOR Key for movement commands
 byte xor_key[16] = {'C','G','4','0','0','2','R','o','b','o','t','2','0','2','4','!'};
 
 // === Motor buzz parameters ===
-#define BUZZ_DEFAULT 500  // Standard buzz duration 
-#define BUZZ_SHORT 120    // Standard short acknowledgement buzz for commands 1-6
+#define BUZZ_DEFAULT 500
+#define BUZZ_SHORT 120
 
 bool motorBuzzing = false;
 unsigned long motorStartTime = 0;
-unsigned int currentBuzzDuration = BUZZ_DEFAULT; 
+unsigned int currentBuzzDuration = BUZZ_DEFAULT;
 
 // Helper: select TCA channel
 void tcaSelect(uint8_t channel) {
@@ -61,9 +62,9 @@ void tcaSelect(uint8_t channel) {
 
 // === MAX17043 fuel gauge read voltage ===
 float readFuelVoltage() {
-  tcaSelect(5); // channel for fuel gauge
+  tcaSelect(5);
   Wire.beginTransmission((uint8_t)FUEL_ADDR);
-  Wire.write(0x02); // VCELL register
+  Wire.write(0x02);
   Wire.endTransmission(false);
   
   Wire.requestFrom((uint8_t)FUEL_ADDR, (uint8_t)2);
@@ -72,17 +73,17 @@ float readFuelVoltage() {
     uint8_t msb = Wire.read();
     uint8_t lsb = Wire.read();
     uint16_t raw = (msb << 8) | lsb;
-    float voltage = (raw >> 4) * 0.00125; // volts
+    float voltage = (raw >> 4) * 0.00125;
     return voltage;
   }
-  return 0.0; // Return 0 on read failure
+  return 0.0;
 }
 
 // === MAX17043 fuel gauge read percentage ===
 float readFuelPercentage() {
-  tcaSelect(5); // channel for fuel gauge
+  tcaSelect(5);
   Wire.beginTransmission((uint8_t)FUEL_ADDR);
-  Wire.write(0x04); // SOC register
+  Wire.write(0x04);
   Wire.endTransmission(false);
   
   Wire.requestFrom((uint8_t)FUEL_ADDR, (uint8_t)2);
@@ -91,10 +92,40 @@ float readFuelPercentage() {
     uint8_t msb = Wire.read();
     uint8_t lsb = Wire.read();
     uint16_t raw = (msb << 8) | lsb;
-    float soc = (raw >> 8); // upper byte is percentage (0-100)
+    float soc = (raw >> 8);
     return soc;
   }
-  return 0.0; // Return 0 on read failure
+  return 0.0;
+}
+
+// === AES Encryption (Based on your working version) ===
+String encrypt_imu_data(String plaintext) {
+  int inputLength = plaintext.length();
+  byte input[inputLength + 1]; // +1 for null terminator
+  plaintext.getBytes(input, inputLength + 1);
+
+  int paddedLength = ((inputLength + AES_BLOCK_SIZE) / AES_BLOCK_SIZE) * AES_BLOCK_SIZE;
+  byte paddedInput[paddedLength];
+  memcpy(paddedInput, input, inputLength);
+  
+  // PKCS7 padding
+  byte padValue = paddedLength - inputLength;
+  for (int i = inputLength; i < paddedLength; i++) {
+    paddedInput[i] = padValue;
+  }
+
+  byte encrypted[paddedLength];
+  aes.set_key(aes_key, 16);
+
+  // Copy IV to avoid modifying the original
+  byte iv_copy[16];
+  memcpy(iv_copy, aes_iv, 16);
+  
+  // Encrypt
+  aes.cbc_encrypt(paddedInput, encrypted, paddedLength / 16, iv_copy);
+
+  String encoded = base64::encode(encrypted, paddedLength);
+  return encoded;
 }
 
 // === Motor control functions ===
@@ -115,7 +146,7 @@ void updateMotorBuzz() {
   }
 }
 
-// Simple XOR encryption/decryption (no Base64)
+// Simple XOR encryption/decryption
 String xor_crypt(String input) {
   String output = "";
   int key_length = 16;
@@ -182,13 +213,11 @@ void loop() {
   // Check for and process incoming commands
   if (commandClientConnected && commandClient.connected()) {
     if (commandClient.available()) {
-      // Read the incoming XOR-encrypted command line
       String encryptedCommand = commandClient.readStringUntil('\n');
       encryptedCommand.trim();
       
       Serial.println("🔐 Received XOR-encrypted command (hex): " + stringToHex(encryptedCommand));
 
-      // XOR Decrypt the command (XOR is symmetric - same function for encrypt/decrypt)
       String decryptedCommand = xor_crypt(encryptedCommand);
       decryptedCommand.trim();
       
@@ -216,7 +245,6 @@ void loop() {
         Serial.println("❌ Unknown decrypted command: '" + decryptedCommand + "'");
       }
       
-      // Send ACK back
       commandClient.println("ACK:Command received and XOR-decrypted");
     }
   }
@@ -229,12 +257,6 @@ void loop() {
   }
 
   // === 2. IMU DATA SENDING CLIENT MANAGEMENT ===
-  // (Keep your existing IMU data sending code here - unchanged)
-  // Since we removed the AES encryption for IMU data, you'll need to either:
-  // 1. Keep using AES for IMU data (recommended) or 
-  // 2. Use plaintext for IMU data temporarily
-  
-  // For now, let's just send plaintext IMU data:
   String packet = "";
 
   for (int set = 0; set < N_SETS_PER_PACKET; set++) {
@@ -261,10 +283,14 @@ void loop() {
   float percent = readFuelPercentage();
   packet += "Fuel:" + String(voltage, 3) + "V," + String(percent, 0) + "%;";
 
-  // Send plaintext IMU data for now
+  // 🔐 ENCRYPT the IMU data using your working method
+  String encrypted_packet = encrypt_imu_data(packet);
+  
+  // Send AES-encrypted IMU data
   if (dataClient.connected()) {
-    dataClient.print(packet);
+    dataClient.print(encrypted_packet);
     dataClient.print("\n");
+    Serial.println("🔐 Sent AES-encrypted IMU data to laptop");
   } else {
     if (dataClient.connect(laptop_ip, data_port))
       Serial.println("✅ Reconnected to IMU Data Server");
