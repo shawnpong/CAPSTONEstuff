@@ -1,22 +1,16 @@
 #include <WiFi.h>
-#include <WiFiUDP.h>
 
 // ---------------- Wi-Fi Configuration ----------------
 const char* ssid = "iPhone";
 const char* password = "zhuqshenw";
 
-// ---------------- TCP  Configuration ----------------
+// ---------------- TCP  Configuration ----------------
 WiFiServer server(5000);
 WiFiClient tcpClient;
 bool tcpClientConnected = false;
 
-// ---------------- UDP Configuration ----------------
-WiFiUDP udp;
-const unsigned int localPort = 4210;
-char incomingPacket[255];
-
 // ---------------- Simple XOR Encryption ----------------
-const byte xorKey[16] = { 
+const byte xorKey[16] = {
   0x55, 0xAA, 0x33, 0xCC, 0x0F, 0xF0, 0x99, 0x66,
   0x12, 0x34, 0x56, 0x78, 0xAB, 0xCD, 0xEF, 0x01
 };
@@ -31,8 +25,8 @@ void setup() {
   Serial.begin(115200);
   delay(2000);
   
-  Serial.println("🚀 FireBeetle starting...");
-  Serial.println("🔓 Using XOR encryption for testing");
+  Serial.println("FireBeetle starting...");
+  Serial.println("Using XOR encryption for testing");
 
   // Initialize motor pins
   pinMode(LEFT_IN1, OUTPUT);
@@ -53,32 +47,24 @@ void setup() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n✅ Wi-Fi connected");
-    Serial.print("📡 IP Address: ");
+    Serial.println("\n[OK] Wi-Fi connected");
+    Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
   } else {
-    Serial.println("\n❌ Wi-Fi connection failed");
+    Serial.println("\n[ERROR] Wi-Fi connection failed");
     ESP.restart();
   }
 
   // Start TCP server
   server.begin();
-  Serial.println("📡 TCP server started on port 5000");
+  Serial.println("TCP server started on port 5000");
   
-  // Start UDP
-  udp.begin(localPort);
-  Serial.print("📡 UDP server started on port "); 
-  Serial.println(localPort);
-  
-  Serial.println("✅ System ready for connections");
+  Serial.println("[OK] System ready for connections");
 }
 
 void loop() {
   // Handle TCP connections and encrypted commands
   handleTCP();
-  
-  // Handle UDP coyesmmands for motor control
-  handleUDP();
   
   delay(50);
 }
@@ -89,7 +75,7 @@ void handleTCP() {
     tcpClient = server.available();
     if (tcpClient) {
       tcpClientConnected = true;
-      Serial.println("✅ TCP Client connected");
+      Serial.println("[OK] TCP Client connected");
     }
   }
 
@@ -104,7 +90,7 @@ void handleTCP() {
       // Read encrypted data
       int readBytes = tcpClient.readBytes(encrypted, availableBytes);
       
-      Serial.print("🔒 Received ");
+      Serial.print("[RX] Received ");
       Serial.print(readBytes);
       Serial.print(" bytes: ");
       for(int i = 0; i < readBytes; i++) {
@@ -119,7 +105,7 @@ void handleTCP() {
         decrypted[i] = encrypted[i] ^ xorKey[i % 16]; // Use modulo to cycle through key
       }
 
-      Serial.print("🔓 Decrypted bytes: ");
+      Serial.print("[DECRYPT] Decrypted bytes: ");
       for(int i = 0; i < readBytes; i++) {
         if(decrypted[i] < 0x10) Serial.print("0");
         Serial.print(decrypted[i], HEX);
@@ -132,15 +118,16 @@ void handleTCP() {
       for(int i = 0; i < readBytes; i++) {
         if(decrypted[i] >= 32 && decrypted[i] <= 126) { // Printable ASCII
           message += (char)decrypted[i];
-        } else if(decrypted[i] == 0) {
-          break; // Null terminator
+        } else if(decrypted[i] == 0 || decrypted[i] == '\n' || decrypted[i] == '\r') {
+          // Treat Null, newline, or carriage return as a message break
+          break; 
         }
       }
       
       message.trim();
       
       if (message.length() > 0) {
-        Serial.print("📝 Decrypted message: '");
+        Serial.print("[MSG] Decrypted message: '");
         Serial.print(message);
         Serial.println("'");
 
@@ -158,22 +145,7 @@ void handleTCP() {
   if (tcpClientConnected && !tcpClient.connected()) {
     tcpClient.stop();
     tcpClientConnected = false;
-    Serial.println("⚠️ TCP Client disconnected");
-  }
-}
-
-void handleUDP() {
-  int packetSize = udp.parsePacket();
-  if (packetSize) {
-    int len = udp.read(incomingPacket, 255);
-    if (len > 0) incomingPacket[len] = 0;
-    String command = String(incomingPacket);
-    command.trim();
-    Serial.print("📡 Received UDP command: ");
-    Serial.println(command);
-
-    // Execute command from UDP
-    executeCommand(command);
+    Serial.println("[WARN] TCP Client disconnected");
   }
 }
 
@@ -181,7 +153,7 @@ void executeCommand(String command) {
   command.toLowerCase();
   command.trim();
   
-  Serial.print("🎯 Executing command: '");
+  Serial.print("[CMD] Executing command: '");
   Serial.print(command);
   Serial.println("'");
 
@@ -196,16 +168,16 @@ void executeCommand(String command) {
     petAction();
   } else if (command == "feed" || command == "5") {
     feedAction();
-  } else if (command == "throw_ball" || command == "throw" || command == "6") { // <-- NEW
+  } else if (command == "throw_ball" || command == "throw" || command == "6") {
     throwBallAction();
   } else if (command == "stop" || command == "0") {
     stopMotors();
   } else {
-    Serial.print("❌ Unknown command: '");
+    Serial.print("[ERROR] Unknown command: '");
     Serial.print(command);
     Serial.println("'");
-    Serial.println("💡 Available commands: come_here, go_away, turn_around, pet, feed, throw_ball, stop");
-    Serial.println("💡 Or numeric: 1=forward, 2=backward, 3=turn, 4=pet, 5=feed, 6=throw, 0=stop");
+    Serial.println("Available commands: come_here, go_away, turn_around, pet, feed, throw_ball, stop");
+    Serial.println("Or numeric: 1=forward, 2=backward, 3=turn, 4=pet, 5=feed, 6=throw, 0=stop");
   }
 }
 
@@ -215,82 +187,82 @@ void stopMotors() {
   digitalWrite(LEFT_IN2, LOW);
   digitalWrite(RIGHT_IN1, LOW);
   digitalWrite(RIGHT_IN2, LOW);
-  Serial.println("🛑 Motors stopped");
+  Serial.println("Motors stopped");
 }
 
 void moveForwardShort() {
-  Serial.println("⬆️ Moving forward");
-  digitalWrite(LEFT_IN1, HIGH); 
+  Serial.println("Moving forward");
+  digitalWrite(LEFT_IN1, HIGH);
   digitalWrite(LEFT_IN2, LOW);
-  digitalWrite(RIGHT_IN1, HIGH); 
+  digitalWrite(RIGHT_IN1, HIGH);
   digitalWrite(RIGHT_IN2, LOW);
   delay(500);
   stopMotors();
 }
 
 void moveBackwardShort() {
-  Serial.println("⬇️ Moving backward");
-  digitalWrite(LEFT_IN1, LOW); 
+  Serial.println("Moving backward");
+  digitalWrite(LEFT_IN1, LOW);
   digitalWrite(LEFT_IN2, HIGH);
-  digitalWrite(RIGHT_IN1, LOW); 
+  digitalWrite(RIGHT_IN1, LOW);
   digitalWrite(RIGHT_IN2, HIGH);
   delay(500);
   stopMotors();
 }
 
 void goAwayAction() {
-  Serial.println("➡️ Wide Left U-Turn and Forward (Go Away)");
+  Serial.println("Wide Left U-Turn and Forward (Go Away)");
   
   // 1. Move backward a bit
-  digitalWrite(LEFT_IN1, LOW); 
+  digitalWrite(LEFT_IN1, LOW);
   digitalWrite(LEFT_IN2, HIGH);
-  digitalWrite(RIGHT_IN1, LOW); 
+  digitalWrite(RIGHT_IN1, LOW);
   digitalWrite(RIGHT_IN2, HIGH);
   delay(300);
   stopMotors();
   delay(100);
 
   // 2. Perform a Wide LEFT Turn (Left wheel moves, Right wheel stops)
-  Serial.println("🔄 Wide U-Turn Pivot: Left ON, Right OFF");
+  Serial.println("Wide U-Turn Pivot: Left ON, Right OFF");
   digitalWrite(LEFT_IN1, HIGH); // Left Forward (Faster side)
   digitalWrite(LEFT_IN2, LOW);
   digitalWrite(RIGHT_IN1, LOW); // Right Stop (Slower side - off)
-  digitalWrite(RIGHT_IN2, LOW); 
+  digitalWrite(RIGHT_IN2, LOW);
   delay(1200); // Duration adjusted for a smoother 180-degree turn
   stopMotors();
   delay(100);
 
   // 3. Go forward
-  digitalWrite(LEFT_IN1, HIGH); 
+  digitalWrite(LEFT_IN1, HIGH);
   digitalWrite(LEFT_IN2, LOW);
-  digitalWrite(RIGHT_IN1, HIGH); 
+  digitalWrite(RIGHT_IN1, HIGH);
   digitalWrite(RIGHT_IN2, LOW);
   delay(500);
   stopMotors();
 }
 
 void turnAround() {
-  Serial.println("🔄 Turning around");
-  digitalWrite(LEFT_IN1, HIGH); 
+  Serial.println("Turning around");
+  digitalWrite(LEFT_IN1, HIGH);
   digitalWrite(LEFT_IN2, LOW);
-  digitalWrite(RIGHT_IN1, LOW); 
+  digitalWrite(RIGHT_IN1, LOW);
   digitalWrite(RIGHT_IN2, HIGH);
   delay(700);
   stopMotors();
 }
 
 void petAction() {
-  Serial.println("🐾 Pet action");
+  Serial.println("Pet action");
   stopMotors();
 }
 
 void feedAction() {
-  Serial.println("🍖 Feed action");
+  Serial.println("Feed action");
   stopMotors();
 }
 
-// --- NEW FUNCTION ---
+// --- Throw Ball Function ---
 void throwBallAction() {
-  Serial.println("🎾 Throw Ball action (No movement)");
+  Serial.println("Throw Ball action (No movement)");
   stopMotors();
 }
