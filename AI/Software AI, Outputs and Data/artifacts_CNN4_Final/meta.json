@@ -1,0 +1,26 @@
+{
+  "window": 128,
+  "hop": 1,
+  "orig_channels": 30,
+  "num_segments": 8,
+  "stats_list": [
+    "mean",
+    "std",
+    "p2p",
+    "energy"
+  ],
+  "stats_per_segment": 4,
+  "F_flat": 960,
+  "D_pca": 34,
+  "classes": 7,
+  "class_names": [
+    "none",
+    "come",
+    "go",
+    "turn",
+    "pet",
+    "feed",
+    "fetch"
+  ],
+  "note": "FP32-trained model"
+}
