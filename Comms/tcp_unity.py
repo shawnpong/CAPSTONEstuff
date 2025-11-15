@@ -25,9 +25,7 @@ TLS_KEY = "D:/y4sem1/CG4002/certs/fb2_new.key"
 FIREBEETLE_IP = "172.20.10.10"
 FIREBEETLE_PORT = 5000
 
-# -------------------------------
 # Unity TCP + AES config
-# -------------------------------
 UNITY_IP = "172.20.10.3"
 UNITY_PORT = 6000
 
@@ -35,9 +33,6 @@ AES_KEY = b"1234567890abcdef"
 XOR_KEY = bytes([0x55, 0xAA, 0x33, 0xCC, 0x0F, 0xF0, 0x99, 0x66,
                  0x12, 0x34, 0x56, 0x78, 0xAB, 0xCD, 0xEF, 0x01])
 
-# -------------------------------
-# Non-blocking TCP Managers
-# -------------------------------
 class TCPManager:
     def __init__(self, target_ip, target_port, name):
         self.target_ip = target_ip
@@ -73,7 +68,7 @@ class TCPManager:
                     self.socket.settimeout(5.0)
                     self.socket.connect((self.target_ip, self.target_port))
                     self.connected = True
-                    print(f"✅ Connected to {self.name}")
+                    print(f"Connected to {self.name}")
                 
                 # Process messages while connected
                 while self.connected and self.running:
@@ -82,20 +77,17 @@ class TCPManager:
                         data = self.send_queue.get(timeout=1.0)
                         self._send_data(data)
                     except queue.Empty:
-                        # Check if socket is still alive
                         try:
                             self.socket.settimeout(0.1)
                             self.socket.recv(1, socket.MSG_PEEK)
                         except (socket.timeout, BlockingIOError):
-                            # Socket still good, continue
                             continue
                         except:
-                            # Socket broken, reconnect
                             self.connected = False
                             break
                             
             except Exception as e:
-                print(f"❌ {self.name} connection failed: {e}")
+                print(f"{self.name} connection failed: {e}")
                 self.connected = False
                 time.sleep(2)  # Wait before retry
                 
@@ -104,18 +96,16 @@ class TCPManager:
             with self.lock:
                 if self.socket and self.connected:
                     self.socket.sendall(data)
-                    print(f"📤 Sent to {self.name}: {data}")
+                    print(f"Sent to {self.name}: {data}")
         except Exception as e:
-            print(f"❌ {self.name} send error: {e}")
+            print(f"{self.name} send error: {e}")
             self.connected = False
 
 # Initialize TCP managers
 firebeetle_manager = TCPManager(FIREBEETLE_IP, FIREBEETLE_PORT, "FireBeetle")
 unity_manager = TCPManager(UNITY_IP, UNITY_PORT, "Unity")
 
-# -------------------------------
 # Message processing
-# -------------------------------
 def send_to_firebeetle(movement_class: int):
     plaintext = str(movement_class).encode('utf-8').ljust(16, b'\x00')
     encrypted = bytes([plaintext[i] ^ XOR_KEY[i] for i in range(16)])
@@ -136,11 +126,11 @@ client.tls_insecure_set(True)
 
 def on_connect(c, userdata, flags, rc):
     if rc == 0:
-        print("✅ Connected to WSL broker")
+        print("Connected to WSL broker")
         c.subscribe(TOPIC_RAW, qos=1)
         print(f"📡 Subscribed to Ultra96 topic: {TOPIC_RAW}")
     else:
-        print(f"❌ MQTT connection failed with code {rc}")
+        print(f"MQTT connection failed with code {rc}")
 
 def on_message(c, userdata, msg):
     try:
@@ -148,30 +138,27 @@ def on_message(c, userdata, msg):
         movement_class = payload_json.get("prediction")
         if movement_class is not None:
             movement_class = int(movement_class)
-            print(f"\n🎯 Movement class from MQTT: {movement_class}")
+            print(f"\nMovement class from MQTT: {movement_class}")
             
             # Non-blocking sends
             send_to_firebeetle(movement_class)
             send_to_unity(movement_class)
         else:
-            print("⚠️ No 'prediction' in payload")
+            print("No 'prediction' in payload")
     except json.JSONDecodeError as e:
-        print(f"❌ JSON parse error: {e}")
+        print(f"JSON parse error: {e}")
     except Exception as e:
-        print(f"❌ Error processing message: {e}")
+        print(f"Error processing message: {e}")
 
 def on_disconnect(c, userdata, rc):
-    print(f"⚠️ Disconnected from WSL broker: {rc}")
+    print(f"Disconnected from WSL broker: {rc}")
 
-# -------------------------------
-# Main Loop
-# -------------------------------
 def main():
     client.on_connect = on_connect
     client.on_message = on_message
     client.on_disconnect = on_disconnect
 
-    print("🚀 Laptop bridge starting...")
+    print("Laptop bridge starting...")
     
     # Start TCP managers
     firebeetle_manager.start()
@@ -180,20 +167,21 @@ def main():
     try:
         client.connect(BROKER_IP, BROKER_PORT, keepalive=60)
         client.loop_start()
-        print("✅ Bridge running. Press Ctrl+C to exit.")
+        print("Bridge running. Press Ctrl+C to exit.")
 
         # Main loop just sleeps - no blocking operations
         while True:
             time.sleep(1)
 
     except KeyboardInterrupt:
-        print("\n🛑 Stopping bridge...")
+        print("\nStopping bridge...")
     finally:
         client.loop_stop()
         client.disconnect()
         firebeetle_manager.stop()
         unity_manager.stop()
-        print("✅ Bridge stopped")
+        print("Bridge stopped")
 
 if __name__ == "__main__":
+
     main()
