@@ -25,7 +25,7 @@ pip install paho-mqtt pycryptodome
       used_in: [ "moreonfb.py", "tcp_unity.py" ]
     firebeetle_ip:
       example: [ "172.20.10.10", "172.20.10.4" ]
-      used_in: [ "moreonfb.py", "tcp_unity.py", "fbserver.ino" ]
+      used_in: [ "moreonfb.py", "tcp_unity.py" ]
     unity_ip:
       example: "172.20.10.3"
       used_in: [ "moreonfb.py", "tcp_unity.py" ]
