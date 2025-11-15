@@ -1,21 +1,19 @@
 #include <WiFi.h>
 
-// ---------------- Wi-Fi Configuration ----------------
+// wifi config 
 const char* ssid = "iPhone";
 const char* password = "zhuqshenw";
 
-// ---------------- TCP  Configuration ----------------
+// TCP config
 WiFiServer server(5000);
 WiFiClient tcpClient;
 bool tcpClientConnected = false;
 
-// ---------------- Simple XOR Encryption ----------------
 const byte xorKey[16] = {
   0x55, 0xAA, 0x33, 0xCC, 0x0F, 0xF0, 0x99, 0x66,
   0x12, 0x34, 0x56, 0x78, 0xAB, 0xCD, 0xEF, 0x01
 };
 
-// ---------------- Motor Pin Configuration ----------------
 #define LEFT_IN1 27
 #define LEFT_IN2 26
 #define RIGHT_IN1 13
@@ -28,7 +26,6 @@ void setup() {
   Serial.println("FireBeetle starting...");
   Serial.println("Using XOR encryption for testing");
 
-  // Initialize motor pins
   pinMode(LEFT_IN1, OUTPUT);
   pinMode(LEFT_IN2, OUTPUT);
   pinMode(RIGHT_IN1, OUTPUT);
@@ -82,7 +79,6 @@ void handleTCP() {
   // Handle data from connected TCP client
   if (tcpClientConnected && tcpClient.connected()) {
     if (tcpClient.available() > 0) {
-      // Read all available bytes
       int availableBytes = tcpClient.available();
       byte encrypted[availableBytes];
       byte decrypted[availableBytes];
@@ -100,9 +96,9 @@ void handleTCP() {
       }
       Serial.println();
 
-      // Simple XOR decryption
+      // XOR decryption
       for(int i = 0; i < readBytes; i++) {
-        decrypted[i] = encrypted[i] ^ xorKey[i % 16]; // Use modulo to cycle through key
+        decrypted[i] = encrypted[i] ^ xorKey[i % 16];
       }
 
       Serial.print("[DECRYPT] Decrypted bytes: ");
@@ -119,7 +115,6 @@ void handleTCP() {
         if(decrypted[i] >= 32 && decrypted[i] <= 126) { // Printable ASCII
           message += (char)decrypted[i];
         } else if(decrypted[i] == 0 || decrypted[i] == '\n' || decrypted[i] == '\r') {
-          // Treat Null, newline, or carriage return as a message break
           break; 
         }
       }
@@ -157,7 +152,7 @@ void executeCommand(String command) {
   Serial.print(command);
   Serial.println("'");
 
-  // Enhanced command parsing with better matching
+  // command parsing 
   if (command == "come_here" || command == "forward" || command == "come" || command == "1") {
     moveForwardShort();
   } else if (command == "go_away" || command == "backward" || command == "go" || command == "2") {
@@ -181,7 +176,6 @@ void executeCommand(String command) {
   }
 }
 
-// --- Motor Control Functions ---
 void stopMotors() {
   digitalWrite(LEFT_IN1, LOW);
   digitalWrite(LEFT_IN2, LOW);
@@ -213,7 +207,6 @@ void moveBackwardShort() {
 void goAwayAction() {
   Serial.println("Wide Left U-Turn and Forward (Go Away)");
   
-  // 1. Move backward a bit
   digitalWrite(LEFT_IN1, LOW);
   digitalWrite(LEFT_IN2, HIGH);
   digitalWrite(RIGHT_IN1, LOW);
@@ -222,17 +215,15 @@ void goAwayAction() {
   stopMotors();
   delay(100);
 
-  // 2. Perform a Wide LEFT Turn (Left wheel moves, Right wheel stops)
   Serial.println("Wide U-Turn Pivot: Left ON, Right OFF");
-  digitalWrite(LEFT_IN1, HIGH); // Left Forward (Faster side)
+  digitalWrite(LEFT_IN1, HIGH); 
   digitalWrite(LEFT_IN2, LOW);
-  digitalWrite(RIGHT_IN1, LOW); // Right Stop (Slower side - off)
+  digitalWrite(RIGHT_IN1, LOW); 
   digitalWrite(RIGHT_IN2, LOW);
-  delay(1200); // Duration adjusted for a smoother 180-degree turn
+  delay(1200); 
   stopMotors();
   delay(100);
 
-  // 3. Go forward
   digitalWrite(LEFT_IN1, HIGH);
   digitalWrite(LEFT_IN2, LOW);
   digitalWrite(RIGHT_IN1, HIGH);
@@ -261,7 +252,6 @@ void feedAction() {
   stopMotors();
 }
 
-// --- Throw Ball Function ---
 void throwBallAction() {
   Serial.println("Throw Ball action (No movement)");
   stopMotors();

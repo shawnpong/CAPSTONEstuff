@@ -24,17 +24,14 @@ float gyroOffset[NUM_IMU][3]  = {0};
 const char* ssid = "iPhone";
 const char* password = "zhuqshenw";
 
-// === IMU DATA SENDING CLIENT (to laptop) ===
 WiFiClient dataClient;
 const char* laptop_ip = "172.20.10.6"; 
 const int data_port = 4210;
 
-// === COMMAND RECEIVING SERVER (from laptop) ===
 WiFiServer commandServer(5001);
 WiFiClient commandClient;
 bool commandClientConnected = false;
 
-// AES for IMU data encryption (must match Python code)
 AES aes;
 byte aes_key[16] = {0x2B,0x7E,0x15,0x16,0x28,0xAE,0xD2,0xA6,
                     0xAB,0xF7,0x15,0x88,0x09,0xCF,0x4F,0x3C};
@@ -44,7 +41,6 @@ byte aes_iv[16]  = {0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
 // XOR Key for movement commands
 byte xor_key[16] = {'C','G','4','0','0','2','R','o','b','o','t','2','0','2','4','!'};
 
-// === Motor buzz parameters ===
 #define BUZZ_DEFAULT 500
 #define BUZZ_SHORT 120
 
@@ -52,7 +48,7 @@ bool motorBuzzing = false;
 unsigned long motorStartTime = 0;
 unsigned int currentBuzzDuration = BUZZ_DEFAULT;
 
-// Helper: select TCA channel
+// select TCA channel
 void tcaSelect(uint8_t channel) {
   if (channel > 7) return;
   Wire.beginTransmission(TCA_ADDR);
@@ -60,7 +56,7 @@ void tcaSelect(uint8_t channel) {
   Wire.endTransmission();
 }
 
-// === MAX17043 fuel gauge read voltage ===
+// fuel gauge read voltage
 float readFuelVoltage() {
   tcaSelect(5);
   Wire.beginTransmission((uint8_t)FUEL_ADDR);
@@ -79,7 +75,7 @@ float readFuelVoltage() {
   return 0.0;
 }
 
-// === MAX17043 fuel gauge read percentage ===
+// fuel gauge read percentage 
 float readFuelPercentage() {
   tcaSelect(5);
   Wire.beginTransmission((uint8_t)FUEL_ADDR);
@@ -98,10 +94,10 @@ float readFuelPercentage() {
   return 0.0;
 }
 
-// === AES Encryption (Based on your working version) ===
+// AES Encryption
 String encrypt_imu_data(String plaintext) {
   int inputLength = plaintext.length();
-  byte input[inputLength + 1]; // +1 for null terminator
+  byte input[inputLength + 1]; 
   plaintext.getBytes(input, inputLength + 1);
 
   int paddedLength = ((inputLength + AES_BLOCK_SIZE) / AES_BLOCK_SIZE) * AES_BLOCK_SIZE;
@@ -117,25 +113,24 @@ String encrypt_imu_data(String plaintext) {
   byte encrypted[paddedLength];
   aes.set_key(aes_key, 16);
 
-  // Copy IV to avoid modifying the original
+  
   byte iv_copy[16];
   memcpy(iv_copy, aes_iv, 16);
   
-  // Encrypt
+  // encrypt
   aes.cbc_encrypt(paddedInput, encrypted, paddedLength / 16, iv_copy);
 
   String encoded = base64::encode(encrypted, paddedLength);
   return encoded;
 }
 
-// === Motor control functions ===
 void startMotorBuzz(unsigned int duration) {
   if (!motorBuzzing) {
     currentBuzzDuration = duration;
     digitalWrite(MOTOR_PIN, HIGH);
     motorStartTime = millis();
     motorBuzzing = true;
-    Serial.println("✅ Motor ON for " + String(duration) + "ms");
+    Serial.println("Motor ON for " + String(duration) + "ms");
   }
 }
 
@@ -159,7 +154,7 @@ String xor_crypt(String input) {
   return output;
 }
 
-// Simple function to convert string to hex (for debugging)
+// function to convert string to hex
 String stringToHex(String input) {
   String hexString = "";
   for (int i = 0; i < input.length(); i++) {
@@ -180,15 +175,15 @@ void setup() {
   
   WiFi.begin(ssid,password);
   while(WiFi.status()!=WL_CONNECTED){ delay(500); Serial.print("."); }
-  Serial.println("\n✅ WiFi connected. IP: " + WiFi.localIP().toString());
+  Serial.println("\nWiFi connected. IP: " + WiFi.localIP().toString());
 
-  // === 1. IMU Data Client Connection ===
-  if (!dataClient.connect(laptop_ip, data_port)) Serial.println("❌ IMU Data Client connect failed");
-  else Serial.println("✅ IMU Data Client connected to laptop at " + String(laptop_ip) + ":" + String(data_port));
+  // IMU Data Client Connection
+  if (!dataClient.connect(laptop_ip, data_port)) Serial.println("IMU Data Client connect failed");
+  else Serial.println("IMU Data Client connected to laptop at " + String(laptop_ip) + ":" + String(data_port));
 
-  // === 2. Command Server Initialization ===
+  // Command Server Initialization
   commandServer.begin();
-  Serial.println("📡 Command Server started on port 5001");
+  Serial.println("Command Server started on port 5001");
 
   // Initialize IMUs
   for (int i=0;i<NUM_IMU;i++){
@@ -199,14 +194,12 @@ void setup() {
 }
 
 void loop() {
-  // === 1. COMMAND RECEIVING SERVER MANAGEMENT ===
-  
   // Handle new client connections
   if (!commandClientConnected) {
     commandClient = commandServer.available();
     if (commandClient) {
       commandClientConnected = true;
-      Serial.println("✅ Command Client connected (Laptop -> Glove)");
+      Serial.println("Command Client connected (Laptop -> Glove)");
     }
   }
 
@@ -216,14 +209,14 @@ void loop() {
       String encryptedCommand = commandClient.readStringUntil('\n');
       encryptedCommand.trim();
       
-      Serial.println("🔐 Received XOR-encrypted command (hex): " + stringToHex(encryptedCommand));
+      Serial.println("Received XOR-encrypted command (hex): " + stringToHex(encryptedCommand));
 
       String decryptedCommand = xor_crypt(encryptedCommand);
       decryptedCommand.trim();
       
-      Serial.println("🔓 Decrypted command: '" + decryptedCommand + "'");
+      Serial.println("Decrypted command: '" + decryptedCommand + "'");
 
-      // Process decrypted command
+      // decrytpion 
       if (decryptedCommand.equalsIgnoreCase("come_here") || decryptedCommand.equalsIgnoreCase("forward") || decryptedCommand.equalsIgnoreCase("come") || decryptedCommand == "1" ||
           decryptedCommand.equalsIgnoreCase("go_away") || decryptedCommand.equalsIgnoreCase("backward") || decryptedCommand.equalsIgnoreCase("go") || decryptedCommand == "2" ||
           decryptedCommand.equalsIgnoreCase("turn_around") || decryptedCommand.equalsIgnoreCase("turn") || decryptedCommand == "3" ||
@@ -231,18 +224,18 @@ void loop() {
           decryptedCommand.equalsIgnoreCase("feed") || decryptedCommand == "5" ||
           decryptedCommand.equalsIgnoreCase("throw_ball") || decryptedCommand.equalsIgnoreCase("throw") || decryptedCommand == "6")
       {
-        Serial.println("📢 Received movement/action command (1-6). Buzzing SHORT!");
+        Serial.println("Received movement/action command (1-6). Buzzing SHORT!");
         startMotorBuzz(BUZZ_SHORT);
       } 
       else if (decryptedCommand.equalsIgnoreCase("stop") || decryptedCommand == "0") {
-        Serial.println("📢 Received STOP command (0). No buzz.");
+        Serial.println("Received STOP command (0). No buzz.");
       }
       else if (decryptedCommand.equalsIgnoreCase("BUZZ")) {
-        Serial.println("📢 Received BUZZ (legacy) command!");
+        Serial.println("Received BUZZ (legacy) command!");
         startMotorBuzz(BUZZ_DEFAULT); 
       } 
       else if (decryptedCommand.length() > 0) {
-        Serial.println("❌ Unknown decrypted command: '" + decryptedCommand + "'");
+        Serial.println("Unknown decrypted command: '" + decryptedCommand + "'");
       }
       
       commandClient.println("ACK:Command received and XOR-decrypted");
@@ -250,13 +243,13 @@ void loop() {
   }
   
   // Handle command client disconnection
-  if (commandClientConnected && !commandClient.connected()) {
+    if (commandClientConnected && !commandClient.connected()) {
     commandClient.stop();
     commandClientConnected = false;
-    Serial.println("⚠️ Command Client disconnected");
+    Serial.println("Command Client disconnected");
   }
 
-  // === 2. IMU DATA SENDING CLIENT MANAGEMENT ===
+  // IMU send data
   String packet = "";
 
   for (int set = 0; set < N_SETS_PER_PACKET; set++) {
@@ -283,20 +276,19 @@ void loop() {
   float percent = readFuelPercentage();
   packet += "Fuel:" + String(voltage, 3) + "V," + String(percent, 0) + "%;";
 
-  // 🔐 ENCRYPT the IMU data using your working method
+  // Encrypt the IMU data
   String encrypted_packet = encrypt_imu_data(packet);
   
   // Send AES-encrypted IMU data
   if (dataClient.connected()) {
     dataClient.print(encrypted_packet);
     dataClient.print("\n");
-    Serial.println("🔐 Sent AES-encrypted IMU data to laptop");
+    Serial.println("Sent AES-encrypted IMU data to laptop");
   } else {
     if (dataClient.connect(laptop_ip, data_port))
-      Serial.println("✅ Reconnected to IMU Data Server");
+      Serial.println("Reconnected to IMU Data Server");
   }
 
-  // === 3. Motor Management ===
   updateMotorBuzz(); 
 
   delay(10);

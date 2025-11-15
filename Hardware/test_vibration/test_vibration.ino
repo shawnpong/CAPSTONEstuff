@@ -1,17 +1,13 @@
-// Define the pin where the vibration motor module is connected
-const int motorPin = 3; // Use a PWM-capable pin for intensity control (e.g., 3, 5, 6, 9, 10, 11 on Uno)
+const int motorPin = 3; 
 
 void setup() {
-  // Set the motor pin as an output
   pinMode(motorPin, OUTPUT);
 }
 
 void loop() {
-  // Turn the motor on at full intensity
   digitalWrite(motorPin, HIGH);
   delay(1000); // Vibrate for 1 second
 
-  // Turn the motor off
   digitalWrite(motorPin, LOW);
   delay(1000); // Stay off for 1 second
 
