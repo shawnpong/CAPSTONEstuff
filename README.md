@@ -66,3 +66,31 @@ pip install paho-mqtt pycryptodome
     Sent to Unity: <encrypted bytes>
     Sent to FireBeetle: <xor bytes>
     
+## Repository Files For Hardware
+- `fbglove` — Glove/hand sensing peripheral
+- `fbcar` — FireBeetle-based car/robot controller
+
+fbglove
+- Path: `Hardware/fbglove/fbglove.ino`
+- Purpose: Read sensors (IMU, flex sensors, etc.) and forward processed data to the laptop/robot communications stack.
+- Quick start:
+  1. Open `fbglove.ino` in the Arduino IDE or PlatformIO.
+  2. Install any libraries referenced by the sketch (check the top of the file for `#include` directives).
+  3. Select the correct FireBeetle/ESP board type and the serial/USB port.
+  4. Upload the sketch.
+  5. Open the Serial Monitor (baud set by `Serial.begin(...)` inside the sketch) to observe boot and sensor output.
+- Notes:
+  - Confirm that any network settings (SSID, passwords, static IPs) and MQTT parameters match the values used by `Comms/` scripts.
+  - If the sketch uses encryption or custom framing (AES/XOR), ensure the keys/params match the receiving scripts.
+
+fbcar
+- Path: `Hardware/fbcar/fbcar.ino`
+- Purpose: Receive movement/actuation commands and drive motors/servos for the robot/car.
+- Quick start:
+  1. Open `fbcar.ino` in the Arduino IDE or PlatformIO.
+  2. Install any motor/sensor libraries used by the sketch.
+  3. Wire motors, drivers, and sensors per the comments at the top of the sketch or the pin definitions inside the file.
+  4. Upload the sketch and open the Serial Monitor for status messages.
+- Notes:
+  - Double-check motor driver power supply and signal levels before powering motors.
+  - Verify network/MQTT configuration if the sketch connects over Wi-Fi.
